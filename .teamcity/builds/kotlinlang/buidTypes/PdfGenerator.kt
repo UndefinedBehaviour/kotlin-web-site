@@ -41,7 +41,7 @@ object PdfGenerator : BuildType({
       scriptContent = """
         # install legacy wkhtmltopdf deps
         apt update
-        apt install -y xfonts-75dpi libjpeg62-turbo xfonts-base
+        apt install -y xfonts-75dpi xfonts-100dpi libjpeg62-turbo xfonts-base
         wget https://deb.debian.org/debian/pool/main/o/openssl/libssl1.1_1.1.1w-0+deb11u1_amd64.deb
         wget https://deb.debian.org/debian/pool/main/o/openssl/libssl-dev_1.1.1w-0+deb11u1_amd64.deb
         wget https://deb.debian.org/debian/pool/main/o/openssl/openssl_1.1.1w-0+deb11u1_amd64.deb

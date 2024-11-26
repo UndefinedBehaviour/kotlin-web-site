@@ -1,7 +1,10 @@
 import { join } from 'node:path';
+import { CheerioAPI } from 'cheerio';
+import { Element } from 'domhandler';
 import { getType } from '../lib/files/type.js';
 import { DIST_FOLDER } from '../lib/files/index.js';
 import { Result } from './lib.js';
+import { replaceNode } from '../lib/html.js';
 
 function sendEvent(...args: Parameters<typeof process.send>) {
     process.send(...args);
@@ -18,6 +21,62 @@ const HOME_HTML_CONTENT = '' +
     '<h1 id = "home.xml">Kotlin Docs</h1>' +
     '</article><div id="disqus_thread"></div ></div></section>';
 
+
+async function fixSectionHtml($: CheerioAPI, node: Element) {
+    const $node = $(node);
+
+    $node.find('.last-modified, .navigation-links._bottom').remove();
+    $node.find('img[data-gif-src]').each(function(_i, img) {
+        img.attribs.src = img.attribs['data-gif-src'];
+    });
+
+    replaceNode($node, '.code-collapse', function($node, _attrs, content) {
+        return `<div class="code-block" data-lang="${$node.attr('data-lang')}">${content}</div>`;
+    });
+
+    replaceNode($node, 'object[data]', function($node, attrs, content) {
+        const textUrl = $node.attr('data');
+        try {
+            const { hostname, pathname, searchParams } = new URL(textUrl, 'https://kotlinlang.org/');
+            if (hostname.endsWith('youtube.com') || hostname.endsWith('youtu.be')) {
+                let id = '';
+                // https://www.youtube.com/watch?v=...&feature=...
+                if (pathname === '/watch') id = searchParams.get('v');
+                // http://www.youtube.com/v/...?blabalab
+                else if (pathname.startsWith('/v/')) id = pathname.substring(3);
+                // http://www.youtube.com/embed/...?blabla
+                else if (pathname.startsWith('/embed/')) id = pathname.substring(6);
+
+                if (id)
+                    return `<figure class="video"><img src="https://img.youtube.com/vi/${id}/maxresdefault.jpg" width="560"></figure>` +
+                        `<p><a href="https://youtube.com/v/${id}">Watch video online.</a></p>`;
+            }
+        } catch (e) {
+            // skip content
+        }
+
+        return `<object ${attrs}>${content}</object>`;
+    });
+
+    $node.find('figure:not([title]) img[title]').each(function(_i, img) {
+        $(img).closest('figure').attr('title', img.attribs.title);
+    });
+    $node.find('.code-block').each(function(_i, node) {
+        let child = node.firstChild;
+        while (child) {
+            if (child.type === 'text') {
+                child.data = child.data.replace(/^[\n\s]+/g, '').trim();
+                if (!child.data) child = child.nextSibling;
+                else child = null;
+            }
+        }
+    });
+    return $.html(node)
+        // sample drop
+        .replace(/\/\/sampleStart\n/g, '')
+        .replace(/\n\/\/sampleEnd/g, '');
+}
+
 async function onMessage(relativePath: string) {
     let html: string = null;
 
@@ -32,11 +91,7 @@ async function onMessage(relativePath: string) {
         } else if (sections.length > 0) {
             html = '';
             for (const node of sections) {
-                $(node).find('.last-modified').remove();
-                html += $.html(node)
-                    // sample drop
-                    .replace(/\/\/sampleStart/g, '')
-                    .replace(/\/\/sampleEnd/g, '');
+                html += await fixSectionHtml($, node);
             }
         }
     }
