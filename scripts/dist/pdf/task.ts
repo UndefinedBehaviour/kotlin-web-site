@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { CheerioAPI } from 'cheerio';
 import { Element } from 'domhandler';
 import { getType } from '../lib/files/type.js';
@@ -61,6 +61,7 @@ async function fixSectionHtml($: CheerioAPI, node: Element) {
     $node.find('figure:not([title]) img[title]').each(function(_i, img) {
         $(img).closest('figure').attr('title', img.attribs.title);
     });
+
     $node.find('.code-block').each(function(_i, node) {
         let child = node.firstChild;
         while (child) {
@@ -71,6 +72,25 @@ async function fixSectionHtml($: CheerioAPI, node: Element) {
             }
         }
     });
+
+    $node.find('[id]:not(h1)').each(function(_i, node) {
+        const article = $(node).closest('.article');
+        const h1Id = article.find('h1[id$=".md"]').attr('id');
+        if (h1Id && article.length === 1) node.attribs  .id = h1Id + '-' + node.attribs.id;
+    });
+    $node.find('a[href]').each(function(_i, node) {
+        const href = node.attribs.href;
+        const url = new URL(href, 'https://kotlinlang.org/docs/');
+        if (url.hostname === 'kotlinlang.org' && dirname(url.pathname) === '/docs') {
+            const filename = basename(url.pathname);
+            if (filename.endsWith('.html')) {
+                let anchor = '#' + filename.replace(/\.html$/, '.md')
+                if (url.hash) anchor += '-' + url.hash.slice(1);
+                node.attribs.href = anchor;
+            }
+        }
+    });
+
     return $.html(node)
         // sample drop
         .replace(/\/\/sampleStart\n/g, '')
