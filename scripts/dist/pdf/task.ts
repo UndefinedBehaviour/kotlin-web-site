@@ -3,7 +3,7 @@ import { CheerioAPI } from 'cheerio';
 import { Element } from 'domhandler';
 import { getType } from '../lib/files/type.js';
 import { DIST_FOLDER } from '../lib/files/index.js';
-import { Result } from './lib.js';
+import { isHiddenProved, Result } from './lib.js';
 import { replaceNode } from '../lib/html.js';
 
 function sendEvent(...args: Parameters<typeof process.send>) {
@@ -22,7 +22,13 @@ const HOME_HTML_CONTENT = '' +
     '</article><div id="disqus_thread"></div ></div></section>';
 
 
-async function fixSectionHtml($: CheerioAPI, node: Element) {
+function buildAnchor(filename: string, hash: string) {
+    let result = '#' + filename.replace(/\.html$/, '.md');
+    if (hash) result += '-' + hash.substring(1);
+    return result;
+}
+
+async function fixSectionHtml($: CheerioAPI, node: Element, relativePath: string) {
     const $node = $(node);
 
     $node.find('.last-modified, .navigation-links._bottom').remove();
@@ -76,18 +82,23 @@ async function fixSectionHtml($: CheerioAPI, node: Element) {
     $node.find('[id]:not(h1)').each(function(_i, node) {
         const article = $(node).closest('.article');
         const h1Id = article.find('h1[id$=".md"]').attr('id');
-        if (h1Id && article.length === 1) node.attribs  .id = h1Id + '-' + node.attribs.id;
+        if (h1Id && article.length === 1) node.attribs.id = h1Id + '-' + node.attribs.id;
     });
     $node.find('a[href]').each(function(_i, node) {
+        let anchor = '';
+
         const href = node.attribs.href;
         const url = new URL(href, 'https://kotlinlang.org/docs/');
-        if (url.hostname === 'kotlinlang.org' && dirname(url.pathname) === '/docs') {
+
+        if (href[0] === '#') anchor = buildAnchor(basename(relativePath), href);
+        else if (url.hostname === 'kotlinlang.org' && dirname(url.pathname) === '/docs') {
             const filename = basename(url.pathname);
-            if (filename.endsWith('.html')) {
-                let anchor = '#' + filename.replace(/\.html$/, '.md')
-                if (url.hash) anchor += '-' + url.hash.slice(1);
-                node.attribs.href = anchor;
-            }
+            if (filename.endsWith('.html')) anchor = buildAnchor(filename, url.hash);
+        }
+
+        if (anchor) {
+            node.attribs.href = anchor;
+            node.attribs['data-origin-href'] = href;
         }
     });
 
@@ -101,7 +112,10 @@ async function onMessage(relativePath: string) {
     let html: string = null;
 
     const path = join(DIST_FOLDER, relativePath);
-    const [type, $] = await getType(relativePath, path);
+    let [type, $] = await getType(relativePath, path);
+
+    if (isHiddenProved(type, relativePath))
+        type = 'Page_Documentation';
 
     if (type === 'Page_Documentation') {
         const sections = $('section.panel__content');
@@ -111,7 +125,7 @@ async function onMessage(relativePath: string) {
         } else if (sections.length > 0) {
             html = '';
             for (const node of sections) {
-                html += await fixSectionHtml($, node);
+                html += await fixSectionHtml($, node, relativePath);
             }
         }
     }

@@ -17,6 +17,8 @@ const TOC_PATH = join(DOCS_PATH, 'HelpTOC.json');
 
 const TOC = JSON.parse(await readFile(TOC_PATH, { encoding: 'utf-8' }));
 
+
+
 const nodes = new Map(
     (await convertToFlatUrls(TOC))
         .map(id => new URL(id, 'https://kotlinlang.org/docs/'))
